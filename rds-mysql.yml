@@ -1,0 +1,64 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Amazon RDS (MySQL) in private subnets with secure password via SSM
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet::Id
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet::Id
+
+  DBUsername:
+    Type: String
+    Default: admin
+
+  DBPasswordSSMParam:
+    Type: String
+    Default: /rds/db-password
+    Description: SSM parameter name for password
+
+Resources:
+  
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow MySQL access from VPC
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: 172.0.0.0/16  # Adjust if needed
+
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: RDS private subnet group
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+
+  RDSInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: my-db
+      AllocatedStorage: 20
+      DBInstanceClass: db.t3.micro
+      Engine: mysql
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Sub "{{resolve:ssm-secure:${DBPasswordSSMParam}:1}}"
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      PubliclyAccessible: false
+      MultiAZ: false
+      DeletionProtection: false
+
+      
+Outputs:
+  RDSInstanceEndpoint:
+    Description: RDS MySQL Endpoint
+    Value: !GetAtt RDSInstance.Endpoint.Address
